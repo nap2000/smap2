@@ -1,9 +1,6 @@
 package org.smap.notifications.interfaces;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.util.Properties;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;

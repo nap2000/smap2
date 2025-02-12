@@ -1,20 +1,27 @@
 package org.smap.notifications.interfaces;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.activation.DataHandler;
+import javax.activation.DataSource;
+import javax.activation.FileDataSource;
+import javax.mail.Message;
+import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
+
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClient;
-import com.amazonaws.services.simpleemail.model.Body;
-import com.amazonaws.services.simpleemail.model.Content;
-import com.amazonaws.services.simpleemail.model.Destination;
-import com.amazonaws.services.simpleemail.model.Message;
-import com.amazonaws.services.simpleemail.model.SendEmailRequest;
+import com.amazonaws.services.simpleemail.model.RawMessage;
+import com.amazonaws.services.simpleemail.model.SendRawEmailRequest;
 
 /*****************************************************************************
 
@@ -29,17 +36,13 @@ Copyright Smap Consulting Pty Ltd
  */
 public class EmitAwsSES {
 	
-	/*
-	 * Events
-	 */
-	public static int AWS_REGISTER_ORGANISATION = 0;
-	
 	private static Logger log =
 			 Logger.getLogger(EmitAwsSES.class.getName());
 	
 	Properties properties = new Properties();
+	AmazonSimpleEmailService client;
 	
-	public EmitAwsSES(String basePath) {
+	public EmitAwsSES(String region, String basePath) {
 		
 		FileInputStream fis = null;
 		try {
@@ -51,70 +54,73 @@ public class EmitAwsSES {
 		} finally {
 			try {fis.close();} catch (Exception e) {}
 		}
+		
+		//create a new SES client
+		client = AmazonSimpleEmailServiceClient.builder()
+				.withRegion(region)
+				.withCredentials(new DefaultAWSCredentialsProviderChain())
+				.build();
 	}
 	
-	// Send an sms
-	public String sendSES() throws Exception  {
+	// Send an email
+	public void sendSES(InternetAddress[] recipients, String subject, 
+			String emailId,
+			String content,
+			String filePath,
+			String filename) throws Exception  {
 		
-		String responseBody = null;
-		ArrayList<String> recipients = new ArrayList<>();
-		recipients.add("neilpenman@gmail.com");
-		
-		//create a new SNS client
-		AmazonSimpleEmailService client = AmazonSimpleEmailServiceClient.builder()
-				.withRegion("ap-southeast-2")
-				.withCredentials(new DefaultAWSCredentialsProviderChain())
-				.build();	
-	
-	       // The HTML body of the email.
-        String bodyHTML = "<h1>Hello!</h1>"
-                + "<p> See the list of customers.</p>";
+		// Add email ID to make subject unique and to allow replies
+		String subject2 = subject + " " + emailId;
 
-        try {
-            send(client, "auto@server.smap.com.au", recipients, "Hi there friend", bodyHTML);
-            System.out.println("Done");
-
-        } catch (Exception e) {
-            e.getStackTrace();
-        }
+        log.info("Send");
+        send(client, "Cases Smap Server <smap@server.smap.com.au>", recipients, subject2, content,
+        		filePath,
+        		filename);
+        log.info("Done Email Sent");
 		
-		return responseBody;
 	}
 	
 	public static void send(AmazonSimpleEmailService client,
             String sender,
-            Collection<String> recipients,
+            InternetAddress[] recipients,
             String subject,
-            String bodyHTML) throws Exception {
+            String bodyHTML,
+            String filePath,
+			String filename) throws Exception {
 
-        Destination destination = new Destination();
-        destination.setToAddresses(recipients);
+        Session session = Session.getDefaultInstance(new Properties());
+        MimeMessage msg = new MimeMessage(session);
+        msg.setSubject(subject, "UTF-8");
+        msg.setFrom(new InternetAddress(sender));
+        msg.setRecipients(Message.RecipientType.TO, recipients);
 
-        Content content = new Content(bodyHTML);
+        MimeMultipart mmp = new MimeMultipart("mixed");
+        msg.setContent(mmp);
+        
+        MimeBodyPart htmlPart = new MimeBodyPart();
+        htmlPart.setContent(bodyHTML,"text/html; charset=UTF-8");
+        mmp.addBodyPart(htmlPart);
+        
+        // Add file attachments if they exist
+     	if(filePath != null) {	
+     		log.info("Adding file: " + filePath);
+     		MimeBodyPart attBodyPart = new MimeBodyPart();
+     		DataSource source = new FileDataSource(filePath);
+     		attBodyPart.setDataHandler(new DataHandler(source));
+     		attBodyPart.setFileName(filename);
+     		mmp.addBodyPart(attBodyPart);
+     	}
+     			
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        msg.writeTo(outputStream);
+        RawMessage rawMessage = new RawMessage(ByteBuffer.wrap(outputStream.toByteArray()));
+        SendRawEmailRequest rawEmailRequest = new SendRawEmailRequest(rawMessage);
 
-        Content sub = new Content(subject);
-
-        Body body = new Body(content);
-
-        Message msg = new Message();
-        msg.setSubject(sub);
-        msg.setBody(body);
-
-
-        SendEmailRequest emailRequest = new SendEmailRequest();
-        emailRequest.setDestination(destination);
-        emailRequest.setMessage(msg);
-        emailRequest.setSource(sender);
-
-        try {
-            System.out.println("Attempting to send an email through Amazon SES " 
+        log.info("Attempting to send an email through Amazon SES " 
             		+ "using the AWS SDK for Java...");
-            client.sendEmail(emailRequest);
+        log.info("Sending AWS email from: " + sender + " with subject " + subject);
+        client.sendRawEmail(rawEmailRequest);
 
-        } catch (Exception e) {
-            System.err.println(e.getMessage());
-            System.exit(1);
-        }
     }
 
 }
