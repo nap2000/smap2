@@ -37,15 +37,17 @@ public class S3AttachmentUpload {
 			
 			initialise(basePath);		// Initialise first time through
 			
-			/*
-			 * Send the file
-			 */
-			File file = new File(filePath);	
-			String s3Path = filePath.substring(basePath.length() + 1);
-			if(file.exists()) {
-				s3.putObject(new PutObjectRequest(bucket, s3Path, file));
-			} else {
-				log.info("Error uploading to S3: File not found: " + file.getAbsolutePath());
+			if(s3Enabled) {				// Check again as the initialisation may have set s3Enabled to false
+				/*
+				 * Send the file
+				 */
+				File file = new File(filePath);	
+				String s3Path = filePath.substring(basePath.length() + 1);
+				if(file.exists()) {
+					s3.putObject(new PutObjectRequest(bucket, s3Path, file));
+				} else {
+					log.info("Error uploading to S3: File not found: " + file.getAbsolutePath());
+				}
 			}
 		}
 		
@@ -100,6 +102,7 @@ public class S3AttachmentUpload {
 			bucket = getSettingFromFile(basePath + "/settings/bucket");
 			if(bucket == null) {
 				s3Enabled = false;
+				log.info("S3 not enabled");
 			} else {
 				region = getSettingFromFile(basePath + "/settings/region");
 				
