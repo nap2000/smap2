@@ -24,6 +24,7 @@ tmp/
 local.properties
 .settings/
 .loadpath
+.project
 
 .idea/
 workspace.xml
